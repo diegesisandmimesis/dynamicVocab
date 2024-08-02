@@ -2,6 +2,69 @@
 //
 // dynamicVocab.t
 //
+//	A TADS3/adv3 module enabling dynamic vocabulary on objects.
+//
+//	The goal is to provide mechanisms for reliably tweaking the
+//	vocabulary of objects at runtime, specific when there's a need
+//	for more custimization than you can get from ThingState.
+//
+//	This module only covered the low-level mechanics of adjusting
+//	the vocabulary.  Integration of triggers, events, and other
+//	methods of programmatically deciding when to make the change will
+//	be handled in another module.
+//
+//
+// USAGE
+//
+//	First, add DynamicVocab to the superclass list of the object
+//	whose vocabulary will be changed.
+//
+//		// Declare an object whose vocabulary can be updated.
+//		pebble: Thing, DynamicVocab '(small) (round) pebble' 'pebble'
+//			"A small, round pebble. "
+//		;
+//
+//	Now declare one or more VocabCfg instances, defining vocabWords
+//	on them using the same syntax vocabulary is declared on a Thing:
+//
+//		// Declare the dynamic part of the vocabulary.
+//		alien: VocabCfg '(alien) artifact';
+//
+//	Having done this, you can now add the additional vocabulary to
+//	the object with:
+//
+//		// Add the "alien" vocabulary to the pebble.
+//		pebble.addVocab(alien);
+//
+//	Now the noun phrase "artifact" and "alien artifact" will resolve
+//	to the pebble (when it's in context).
+//
+//	You can remove the additional vocabulary with:
+//
+//		// Remove the "alien" vocabulary to the pebble.
+//		pebble.removeVocab(alien);
+//
+//	Vocabulary will only be removed if it would not otherwise be
+//	on the object.  So for example if you define multiple VocabCfgs
+//	with overlapping vocabulary removing one won't remove the duplicate
+//	words.  For example:
+//
+//		// Create a couple VocabCfg instances.
+//		alien = new VocabCfg('(alien) artifact');
+//		weird = new VocabCfg('(weird) artifact');
+//
+//		// Add them to the pebble.
+//		pebble.addVocab(alien);		// >X ALIEN ARTIFACT now works
+//		pebble.addVocab(weird);		// >X WEIRD ARTIFACT now works
+//
+//		// Remove the "weird" vocabulary.
+//		pebble.removeVocab(alien);
+//
+//	In the above example after the last line pebble will still have
+//	the noun "artifact" defined on it;  removeVocab(alien) will have only
+//	removed the adjective "alien".
+//
+//
 #include <adv3.h>
 #include <en_us.h>
 
@@ -15,18 +78,22 @@ dynamicVocabModuleID: ModuleID {
         listingOrder = 99
 }
 
+// Preinit object.  We just ping all the VocabCfg instances.
 dynamicVocabPreinit: PreinitObject
 	execute() {
 		forEachInstance(VocabCfg, { x: x.initVocabCfg() });
 	}
 ;
 
+// Abstract class defining only the vocab properties we care about
+// and how to add and remove them from objects.
 class VocabProps: object
 	// List of vocabulary properties we care about.
 	props = static [
 		&noun, &adjective, &plural, &adjApostS, &literalAdjective
 	]
 
+	// Add our vocabulary to the given object.
 	applyTo(obj) {
 		props.subset({ x: self.propDefined(x, PropDefDirectly) })
 			.forEach({ x: cmdDict.addWord(obj, self.(x), x) });
@@ -55,8 +122,16 @@ class VocabProps: object
 // The arg to the constructor should be a standard t3 vocabWords string,
 // like you'd use in a Thing's declaration.
 class VocabCfg: VocabProps
+	// By default we create an Unthing that shares our vocabulary.
+	// This is so the parser doesn't complain about a word not being
+	// needed in the game when our vocabulary isn't on any objects.
 	useUnthing = true
+
+	// Class to use for the Unthing if useUnthing (above) is true.
 	dynamicVocabUnthingClass = DynamicVocabUnthing
+
+	// Placeholder;  this is the only one of the vocabulary properties
+	// we care about that ISN'T a grammatical reserved keyword.
 	weakTokens = nil
 
 	construct(v?) {
@@ -64,10 +139,18 @@ class VocabCfg: VocabProps
 		initVocabCfg();
 	}
 
+	// Preinit/construct-time initialization.
 	initVocabCfg() {
+		// If we don't have a vocabWords, we have nothing to do.
 		if(vocabWords == nil)
 			return;
+
+		// Parse the vocabWords.  This is mostly equivalent to
+		// initializeVocabWith() with the exception that we
+		// don't add anything to the cmdDict here.
 		parseVocabWords(vocabWords);
+
+		// Create the Unthing for our vocabulary, if we're doing so.
 		createUnthing();
 	}
 
@@ -78,6 +161,7 @@ class VocabCfg: VocabProps
 
 		obj = dynamicVocabUnthingClass.createInstance();
 		obj.initializeVocabWith(vocabWords);
+		obj.parentVocabCfg = self;
 	}
 
 	// Get the length of the next bit of string to parse.
@@ -159,6 +243,8 @@ class VocabCfg: VocabProps
 		return([ p, cur ]);
 	}
 
+	// Mostly a initializeVocabWith() workalike, with the exception
+	// that we don't add anything to cmdDict.
 	parseVocabWords(str) {
 		local cur, len, modList, p, v;
 
@@ -205,14 +291,16 @@ class VocabCfg: VocabProps
 			}
 		}
 
-		foreach(local p in modList)
-			self.(p) = self.(p).getUnique();
+		modList.forEach({ x: self.(x) = self.(x).getUnique() });
 	}
 ;
 
+// Mixin class for objects that want to use dynamic vocabulary.
 class DynamicVocab: object
+	// This will hold all of our active VocabCfgs.
 	_vocabCfgs = nil
 
+	// Add a VocabCfg instance to our list, if it's not already on it.
 	_addVocabCfg(cfg) {
 		if(_vocabCfgs == nil)
 			_vocabCfgs = new Vector();
@@ -225,6 +313,7 @@ class DynamicVocab: object
 		return(true);
 	}
 
+	// Remove a VocabCfg instance from our list, if it's there.
 	_removeVocabCfg(cfg) {
 		local idx;
 
@@ -236,46 +325,71 @@ class DynamicVocab: object
 		return(true);
 	}
 
+	// Add a VocabCfg instance.
 	addVocab(cfg) {
+		// Make sure the arg is valid.
 		if((cfg == nil) || !cfg.ofKind(VocabCfg))
 			return(nil);
 
+		// Remember this VocabCfg.  This will fail if it's
+		// already on our list.
 		if(!_addVocabCfg(cfg))
 			return(nil);
 
+		// Apply the vocabulary changes.
 		cfg.applyTo(self);
 
 		return(true);
 	}
 
+	// Remove a VocabCfg instance.
 	removeVocab(cfg) {
+		// Make sure the arg is valid.
 		if((cfg == nil) || !cfg.ofKind(VocabCfg))
 			return(nil);
 
+		// Forget about this VocabCfg.  This will fail if it
+		// isn't on our list.
+		// IMPORTANT:  We have to do this BEFORE VocabCfg.removeFrom()
+		// 	is called, because it checks the list as part of
+		//	figuring out what to remove, and we need to be
+		//	off the list before that happens.
 		if(!_removeVocabCfg(cfg))
 			return(nil);
 
+		// Apply the vocabulary changes.
 		cfg.removeFrom(self);
 
 		return(true);
 	}
 
+	// Check to see if the given prop on this object includs the
+	// word v.
+	// IMPORTANT:  This is called from VocabCfg.removeFrom(), and it
+	//	needs to be called AFTER the VocabCfg instance being removed
+	//	is taken off the object's _vocabCfgs list.  This is because
+	//	we check to see if the word in question is in any other
+	//	VocabCfg's vocabulary and we don't remove the vocabulary
+	//	if it is.  And if the VocabCfg being removed is still on
+	//	the list then of course its vocabulary would be found.
 	hasVocab(prop, v) {
-		// Easy case:  the value in our property.
-		if((self.(prop) != nil) && (self.(prop).indexOf(v) != nil)) {
+		// Easy case:  the value is in our property.
+		if((self.(prop) != nil) && (self.(prop).indexOf(v) != nil))
 			return(true);
-		}
 
-		if(_vocabCfgs == nil) {
+		// Make sure we have a VocabCfg list.
+		if(_vocabCfgs == nil)
 			return(nil);
-		}
 
+		// Check our VocabCfg list for anyone that has the
+		// word we're looking for in the property we're checking.
+		// As noted above, the VocabCfg being removed has to
+		// be off this list before we get here or we're
+		// guaranteed to get a match.
 		return(_vocabCfgs.subset({ x: (x.(prop) != nil)
 			&& (x.(prop).indexOf(v) != nil) }).length > 0);
 	}
-
 ;
 
-class DynamicVocabUnthing: Unthing
-	parentVocabCfg = nil
-;
+// Unthing class.
+class DynamicVocabUnthing: Unthing parentVocabCfg = nil;
