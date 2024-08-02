@@ -21,29 +21,46 @@
 
 #include "dynamicVocab.h"
 
-versionInfo: GameID
-        name = 'dynamicVocab Library Demo Game'
-        byline = 'Diegesis & Mimesis'
-        desc = 'Demo game for the dynamicVocab library. '
-        version = '1.0'
-        IFID = '12345'
-	showAbout() {
-		"This is a simple test game that demonstrates the features
-		of the dynamicVocab library.
-		<.p>
-		Consult the README.txt document distributed with the library
-		source for a quick summary of how to use the library in your
-		own games.
-		<.p>
-		The library source is also extensively commented in a way
-		intended to make it as readable as possible. ";
-	}
-;
+versionInfo: GameID;
 gameMain: GameMainDef
 	initialPlayerChar = me
-	inlineCommand(cmd) { "<b>&gt;<<toString(cmd).toUpper()>></b>"; }
-	printCommand(cmd) { "<.p>\n\t<<inlineCommand(cmd)>><.p> "; }
+	alienToggle = nil
+	weirdToggle = nil
 ;
 
 startRoom: Room 'Void' "This is a featureless void.";
 +me: Person;
++pebble: Thing, DynamicVocab '(small) (round) pebble' 'pebble'
+	"A small, round pebble. "
+;
+
+alien: VocabCfg '(alien) artifact';
+weird: VocabCfg '(weird) artifact';
+
+DefineSystemAction(Alien)
+	execSystemAction() {
+		if(gameMain.alienToggle == nil) {
+			pebble.addVocab(alien);
+			defaultReport('Adding <q>alien</q> vocab. ');
+		} else {
+			pebble.removeVocab(alien);
+			defaultReport('Removing <q>alien</q> vocab. ');
+		}
+		gameMain.alienToggle = !gameMain.alienToggle;
+	}
+;
+VerbRule(Alien) 'alien' : AlienAction verbPhrase = 'alien/alienating';
+
+DefineSystemAction(Weird)
+	execSystemAction() {
+		if(gameMain.weirdToggle == nil) {
+			pebble.addVocab(weird);
+			defaultReport('Adding <q>weird</q> vocab. ');
+		} else {
+			pebble.removeVocab(weird);
+			defaultReport('Removing <q>weird</q> vocab. ');
+		}
+		gameMain.weirdToggle = !gameMain.weirdToggle;
+	}
+;
+VerbRule(Weird) 'weird' : WeirdAction verbPhrase = 'weird/weirding';
