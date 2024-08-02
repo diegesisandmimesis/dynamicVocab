@@ -22,6 +22,7 @@ dynamicVocabPreinit: PreinitObject
 ;
 
 class VocabProps: object
+	// List of vocabulary properties we care about.
 	props = static [
 		&noun, &adjective, &plural, &adjApostS, &literalAdjective
 	]
@@ -48,42 +49,35 @@ class VocabProps: object
 				.forEach({ o: cmdDict.removeWord(obj, o, x) });
 			});
 	}
-
-/*
-	// See if the given word is defined in the given object's prop.
-	// Example:  _hasWord('foo', pebble, &adjective) to see if the
-	// pebble has "foo" in its adjective list.
-	_hasWord(str, obj, prop) {
-		if(obj.(prop) == nil) return(nil);
-		return(obj.(prop).indexOf(str) != nil);
-	}
-*/
 ;
 
 // Class for changes to vocabulary objects.
 // The arg to the constructor should be a standard t3 vocabWords string,
 // like you'd use in a Thing's declaration.
 class VocabCfg: VocabProps
+	useUnthing = true
+	dynamicVocabUnthingClass = DynamicVocabUnthing
 	weakTokens = nil
 
-	init = nil
-
-	construct(v?) { if(v != nil) parseVocabWords(v); }
+	construct(v?) {
+		if(v != nil) vocabWords = v;
+		initVocabCfg();
+	}
 
 	initVocabCfg() {
 		if(vocabWords == nil)
 			return;
 		parseVocabWords(vocabWords);
+		createUnthing();
 	}
 
-	_debugVocab() {
-		aioSay('\n<<toString(self)>>:\n ');
-		getPropList().forEach(function(o) {
-			if(!propDefined(o, PropDefDirectly))
-				return;
-			aioSay('\n\t<<toString(o)>>
-				= <<toString(self.(o))>>\n ');
-		});
+	createUnthing() {
+		local obj;
+
+		if(useUnthing != true) return;
+
+		obj = dynamicVocabUnthingClass.createInstance();
+		obj.initializeVocabWith(vocabWords);
 	}
 
 	// Get the length of the next bit of string to parse.
@@ -280,4 +274,8 @@ class DynamicVocab: object
 			&& (x.(prop).indexOf(v) != nil) }).length > 0);
 	}
 
+;
+
+class DynamicVocabUnthing: Unthing
+	parentVocabCfg = nil
 ;
