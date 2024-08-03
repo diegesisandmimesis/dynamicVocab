@@ -5,7 +5,7 @@
 //	A TADS3/adv3 module enabling dynamic vocabulary on objects.
 //
 //	The goal is to provide mechanisms for reliably tweaking the
-//	vocabulary of objects at runtime, specific when there's a need
+//	vocabulary of objects at runtime, specifically when there's a need
 //	for more custimization than you can get from ThingState.
 //
 //	This module only covered the low-level mechanics of adjusting
@@ -57,7 +57,7 @@
 //		pebble.addVocab(alien);		// >X ALIEN ARTIFACT now works
 //		pebble.addVocab(weird);		// >X WEIRD ARTIFACT now works
 //
-//		// Remove the "weird" vocabulary.
+//		// Remove the "alien" vocabulary.
 //		pebble.removeVocab(alien);
 //
 //	In the above example after the last line pebble will still have
