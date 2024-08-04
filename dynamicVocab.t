@@ -122,6 +122,13 @@ class VocabProps: object
 // The arg to the constructor should be a standard t3 vocabWords string,
 // like you'd use in a Thing's declaration.
 class VocabCfg: VocabProps
+	// Sorting order
+	order = 99
+
+	active = true
+
+	name = nil
+
 	// By default we create an Unthing that shares our vocabulary.
 	// This is so the parser doesn't complain about a word not being
 	// needed in the game when our vocabulary isn't on any objects.
@@ -152,6 +159,21 @@ class VocabCfg: VocabProps
 
 		// Create the Unthing for our vocabulary, if we're doing so.
 		createUnthing();
+
+		canonicalizeOrder();
+	}
+
+	canonicalizeOrder() {
+		switch(dataTypeXlat(order)) {
+			case TypeSString:
+				order = toInteger(order);
+				break;
+			case TypeInt:
+				break;
+			default:
+				order = 99;
+				break;
+		}
 	}
 
 	createUnthing() {
@@ -163,6 +185,9 @@ class VocabCfg: VocabProps
 		obj.initializeVocabWith(vocabWords);
 		obj.parentVocabCfg = self;
 	}
+
+	isActive() { return(active == true); }
+	setActive(v) { active = (v ? true : nil); }
 
 	// Get the length of the next bit of string to parse.
 	tokenLen(str) {
@@ -300,6 +325,9 @@ class DynamicVocab: object
 	// This will hold all of our active VocabCfgs.
 	_vocabCfgs = nil
 
+	// Flag indicating whether or not the _vocabCfgs are sorted.
+	_vocabCfgsSorted = nil
+
 	// Add a VocabCfg instance to our list, if it's not already on it.
 	_addVocabCfg(cfg) {
 		if(_vocabCfgs == nil)
@@ -309,6 +337,9 @@ class DynamicVocab: object
 			return(nil);
 
 		_vocabCfgs.append(cfg);
+
+		// Make sure we re-sort if we want a sorted list.
+		_vocabCfgsSorted = nil;
 
 		return(true);
 	}
@@ -322,6 +353,10 @@ class DynamicVocab: object
 		if((idx = _vocabCfgs.indexOf(cfg)) == nil)
 			return(nil);
 		_vocabCfgs.removeElementAt(idx);
+
+		// NOTE:  We DON'T clear the sorted flag because removing
+		//	an element won't un-sort the other elements.
+
 		return(true);
 	}
 
@@ -388,6 +423,21 @@ class DynamicVocab: object
 		// guaranteed to get a match.
 		return(_vocabCfgs.subset({ x: (x.(prop) != nil)
 			&& (x.(prop).indexOf(v) != nil) }).length > 0);
+	}
+
+	sortVocabCfgs() {
+		if(_vocabCfgs == nil) return(nil);
+		_vocabCfgs = _vocabCfgs.sort(nil, { a, b: b.order - a.order });
+		_vocabCfgsSorted = true;
+		return(true);
+	}
+
+	getVocabCfg() {
+		if(_vocabCfgs == nil)
+			return(nil);
+		if(_vocabCfgsSorted != true)
+			sortVocabCfgs();
+		return(_vocabCfgs.valWhich({ x: x.isActive() == true }));
 	}
 ;
 
