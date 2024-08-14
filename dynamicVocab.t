@@ -28,13 +28,13 @@
 //	on them using the same syntax vocabulary is declared on a Thing:
 //
 //		// Declare the dynamic part of the vocabulary.
-//		alien: VocabCfg '(alien) artifact';
+//		+alien: VocabCfg '(alien) artifact';
 //
 //	Having done this, you can now add the additional vocabulary to
 //	the object with:
 //
 //		// Add the "alien" vocabulary to the pebble.
-//		pebble.addVocab(alien);
+//		pebble.activateVocab(alien);
 //
 //	Now the noun phrase "artifact" and "alien artifact" will resolve
 //	to the pebble (when it's in context).
@@ -42,26 +42,30 @@
 //	You can remove the additional vocabulary with:
 //
 //		// Remove the "alien" vocabulary to the pebble.
-//		pebble.removeVocab(alien);
+//		pebble.deactivateVocab(alien);
 //
 //	Vocabulary will only be removed if it would not otherwise be
 //	on the object.  So for example if you define multiple VocabCfgs
 //	with overlapping vocabulary removing one won't remove the duplicate
 //	words.  For example:
 //
+//		// The base object.
+//		pebble: Thing, DynamicVocab '(small) (round) pebble' 'pebble'
+//			"A small, round pebble. "
+//		;
 //		// Create a couple VocabCfg instances.
-//		alien = new VocabCfg('(alien) artifact');
-//		weird = new VocabCfg('(weird) artifact');
+//		+alien = new VocabCfg('(alien) artifact');
+//		+weird = new VocabCfg('(weird) artifact');
 //
 //		// Add them to the pebble.
-//		pebble.addVocab(alien);		// >X ALIEN ARTIFACT now works
-//		pebble.addVocab(weird);		// >X WEIRD ARTIFACT now works
+//		pebble.activateVocab(alien);	// >X ALIEN ARTIFACT now works
+//		pebble.activateVocab(weird);	// >X WEIRD ARTIFACT now works
 //
 //		// Remove the "alien" vocabulary.
-//		pebble.removeVocab(alien);
+//		pebble.deactivateVocab(alien);
 //
 //	In the above example after the last line pebble will still have
-//	the noun "artifact" defined on it;  removeVocab(alien) will have only
+//	the noun "artifact" defined on it;  deactivateVocab(alien) will have only
 //	removed the adjective "alien".
 //
 //
@@ -125,7 +129,7 @@ class VocabCfg: VocabProps
 	// Sorting order
 	order = 99
 
-	active = true
+	active = nil
 
 	name = nil
 
@@ -151,6 +155,9 @@ class VocabCfg: VocabProps
 		// If we don't have a vocabWords, we have nothing to do.
 		if(vocabWords == nil)
 			return;
+
+		if((location != nil) && location.ofKind(DynamicVocab))
+			location.addVocab(self);
 
 		// Parse the vocabWords.  This is mostly equivalent to
 		// initializeVocabWith() with the exception that we
@@ -325,15 +332,17 @@ class DynamicVocab: object
 	// This will hold all of our active VocabCfgs.
 	_vocabCfgs = nil
 
+	_vocabCfgState = nil
+
 	// Flag indicating whether or not the _vocabCfgs are sorted.
 	_vocabCfgsSorted = nil
 
 	// Add a VocabCfg instance to our list, if it's not already on it.
-	_addVocabCfg(cfg) {
+	addVocab(cfg) {
 		if(_vocabCfgs == nil)
 			_vocabCfgs = new Vector();
 
-		if(_vocabCfgs.indexOf(cfg) != nil)
+		if(_checkVocabCfg(cfg))
 			return(nil);
 
 		_vocabCfgs.append(cfg);
@@ -341,11 +350,26 @@ class DynamicVocab: object
 		// Make sure we re-sort if we want a sorted list.
 		_vocabCfgsSorted = nil;
 
+		if(cfg.isActive())
+			activateVocab(cfg);
+
 		return(true);
+	}
+	_checkVocabCfg(cfg) {
+		return(_vocabCfgs ? _vocabCfgs.indexOf(cfg) != nil : nil);
+	}
+
+	_getVocabCfgState(cfg) {
+		return(_vocabCfgState ? _vocabCfgState[cfg] : nil);
+	}
+	_setVocabCfgState(cfg, v) {
+		if(_vocabCfgState == nil)
+			_vocabCfgState = new LookupTable();
+		_vocabCfgState[cfg] = ((v == true) ? true : nil);
 	}
 
 	// Remove a VocabCfg instance from our list, if it's there.
-	_removeVocabCfg(cfg) {
+	removeVocab(cfg) {
 		local idx;
 
 		if(_vocabCfgs == nil)
@@ -354,59 +378,95 @@ class DynamicVocab: object
 			return(nil);
 		_vocabCfgs.removeElementAt(idx);
 
+		deactivateVocab(cfg);
+
 		// NOTE:  We DON'T clear the sorted flag because removing
 		//	an element won't un-sort the other elements.
 
 		return(true);
 	}
 
-	// Add a VocabCfg instance.
-	addVocab(cfg) {
+	// Make a VocabCfg instance active.
+	activateVocab(cfg) {
 		// Make sure the arg is valid.
 		if((cfg == nil) || !cfg.ofKind(VocabCfg))
 			return(nil);
 
-		// Remember this VocabCfg.  This will fail if it's
-		// already on our list.
-		if(!_addVocabCfg(cfg))
+		if(!_checkVocabCfg(cfg))
 			return(nil);
 
 		// Apply the vocabulary changes.
 		cfg.applyTo(self);
+		twiddleCfg(cfg, true);
 
 		return(true);
 	}
 
+	// Make a VocabCfg active or inactive.
+	twiddleCfg(cfg, v) {
+		// Change the state on the instance itself.
+		cfg.setActive(v);
+
+		// Remember this state.  This is used to detect when
+		// the state changes, which means we need to update our
+		// vocabulary.
+		_setVocabCfgState(cfg, v);
+	}
+
 	// Remove a VocabCfg instance.
-	removeVocab(cfg) {
+	deactivateVocab(cfg) {
 		// Make sure the arg is valid.
 		if((cfg == nil) || !cfg.ofKind(VocabCfg))
 			return(nil);
 
-		// Forget about this VocabCfg.  This will fail if it
-		// isn't on our list.
-		// IMPORTANT:  We have to do this BEFORE VocabCfg.removeFrom()
-		// 	is called, because it checks the list as part of
-		//	figuring out what to remove, and we need to be
-		//	off the list before that happens.
-		if(!_removeVocabCfg(cfg))
+		if(_getVocabCfgState(cfg) != true)
 			return(nil);
+
+		// IMPORTANT:  Must happen before the removeFrom() below.
+		twiddleCfg(cfg, nil);
 
 		// Apply the vocabulary changes.
 		cfg.removeFrom(self);
 
+
 		return(true);
 	}
 
-	// Check to see if the given prop on this object includs the
+	// Go through each VocabCfg instance (that we care about) and
+	// check to see if it's active or not.  If this has changed since
+	// the last time we checked, we update our vocabulary to reflect
+	// the new state.
+	syncVocab() {
+		local b;
+
+		_vocabCfgs.forEach(function(o) {
+			// Current state of this VocabCfg.
+			b = o.isActive();
+
+			// If the current state is the same as what we
+			// have saved for this instance, we have nothing to do.
+			if(_getVocabCfgState(o) == b)
+				return;
+
+
+			// The state has changed, so update our vocab to
+			// reflect the current state.
+			if(b)
+				activateVocab(o);
+			else
+				deactivateVocab(o);
+		});
+	}
+
+	// Check to see if the given prop on this object includes the
 	// word v.
 	// IMPORTANT:  This is called from VocabCfg.removeFrom(), and it
 	//	needs to be called AFTER the VocabCfg instance being removed
-	//	is taken off the object's _vocabCfgs list.  This is because
-	//	we check to see if the word in question is in any other
-	//	VocabCfg's vocabulary and we don't remove the vocabulary
-	//	if it is.  And if the VocabCfg being removed is still on
-	//	the list then of course its vocabulary would be found.
+	//	is marked as inactive.  This is because we go through
+	//	the VocabCfg list to see if there is anything that uses
+	//	the same vocabulary as the bit that's being removed.  And
+	//	if the VocabCfg instance being removed isn't inactive, it
+	//	will of course match itself, causing the removal to fail.
 	hasVocab(prop, v) {
 		// Easy case:  the value is in our property.
 		if((self.(prop) != nil) && (self.(prop).indexOf(v) != nil))
@@ -422,6 +482,7 @@ class DynamicVocab: object
 		// be off this list before we get here or we're
 		// guaranteed to get a match.
 		return(_vocabCfgs.subset({ x: (x.(prop) != nil)
+			&& (x.isActive() == true)
 			&& (x.(prop).indexOf(v) != nil) }).length > 0);
 	}
 

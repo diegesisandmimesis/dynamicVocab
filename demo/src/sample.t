@@ -33,17 +33,16 @@ startRoom: Room 'Void' "This is a featureless void.";
 +pebble: Thing, DynamicVocab '(small) (round) pebble' 'pebble'
 	"A small, round pebble. "
 ;
-
-alien: VocabCfg '(alien) artifact';
-weird: VocabCfg '(weird) artifact';
+++alien: VocabCfg '(alien) artifact';
+++weird: VocabCfg '(weird) artifact';
 
 DefineSystemAction(Alien)
 	execSystemAction() {
 		if(gameMain.alienToggle == nil) {
-			pebble.addVocab(alien);
+			pebble.activateVocab(alien);
 			defaultReport('Adding <q>alien</q> vocab. ');
 		} else {
-			pebble.removeVocab(alien);
+			pebble.deactivateVocab(alien);
 			defaultReport('Removing <q>alien</q> vocab. ');
 		}
 		gameMain.alienToggle = !gameMain.alienToggle;
@@ -54,10 +53,10 @@ VerbRule(Alien) 'alien' : AlienAction verbPhrase = 'alien/alienating';
 DefineSystemAction(Weird)
 	execSystemAction() {
 		if(gameMain.weirdToggle == nil) {
-			pebble.addVocab(weird);
+			pebble.activateVocab(weird);
 			defaultReport('Adding <q>weird</q> vocab. ');
 		} else {
-			pebble.removeVocab(weird);
+			pebble.deactivateVocab(weird);
 			defaultReport('Removing <q>weird</q> vocab. ');
 		}
 		gameMain.weirdToggle = !gameMain.weirdToggle;
