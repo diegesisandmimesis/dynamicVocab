@@ -28,12 +28,24 @@ gameMain: GameMainDef
 	weirdToggle = nil
 ;
 
-startRoom: Room 'Void' "This is a featureless void.";
+startRoom: Room 'Void'
+	"This is a featureless void."
+
+	// Ping the pebble's syncVocab() method.  In a real game
+	// we'd want to use something a little more elegant, but
+	// this is just for testing.
+	roomAfterAction() { pebble.syncVocab(); }
+;
 +me: Person;
 +pebble: Thing, DynamicVocab '(small) (round) pebble' 'pebble'
-	"A small, round pebble. "
+	// The description sets the reveal tag "alien".
+	"A small, round pebble.  Which may be an alien
+	artifact, apparently.<.reveal alien> "
 ;
-++alien: VocabCfg '(alien) artifact';
+++alien: VocabCfg '(alien) artifact'
+	// The "alien" vocabulary is enabled by the "alien" reveal tag.
+	isActive = (gRevealed('alien'))
+;
 ++weird: VocabCfg '(weird) artifact';
 
 DefineSystemAction(Alien)
