@@ -65,8 +65,8 @@
 //		pebble.deactivateVocab(alien);
 //
 //	In the above example after the last line pebble will still have
-//	the noun "artifact" defined on it;  deactivateVocab(alien) will have only
-//	removed the adjective "alien".
+//	the noun "artifact" defined on it;  deactivateVocab(alien) will have
+//	only removed the adjective "alien".
 //
 //
 #include <adv3.h>
@@ -85,13 +85,21 @@ dynamicVocabModuleID: ModuleID {
 // Preinit object.  We just ping all the VocabCfg instances.
 dynamicVocabPreinit: PreinitObject
 	execute() {
-		forEachInstance(VocabCfg, { x: x.initVocabCfg() });
+		local i;
+
+		i = 1;
+		forEachInstance(VocabCfg, function(o) {
+			o.initVocabCfg(i);
+			i += 1;
+		});
 	}
 ;
 
 // Abstract class defining only the vocab properties we care about
 // and how to add and remove them from objects.
 class VocabProps: object
+	name = nil
+
 	// List of vocabulary properties we care about.
 	props = static [
 		&noun, &adjective, &plural, &adjApostS, &literalAdjective
@@ -120,6 +128,10 @@ class VocabProps: object
 				.forEach({ o: cmdDict.removeWord(obj, o, x) });
 			});
 	}
+
+	getName() {
+		return(propDefined(&name, PropDefDirectly) ? name : nil);
+	}
 ;
 
 // Class for changes to vocabulary objects.
@@ -130,8 +142,6 @@ class VocabCfg: VocabProps
 	order = 99
 
 	active = nil
-
-	name = nil
 
 	// By default we create an Unthing that shares our vocabulary.
 	// This is so the parser doesn't complain about a word not being
@@ -151,7 +161,15 @@ class VocabCfg: VocabProps
 	}
 
 	// Preinit/construct-time initialization.
-	initVocabCfg() {
+	// The optional arg, if present, is the position of this config
+	// in the object's declared configs.  This is so lexical ordering
+	// in the source can be used in lieu of explicitly declared
+	// order values.
+	initVocabCfg(idx?) {
+		// We weren't passed our index value, so we use a default.
+		if(idx == nil)
+			idx = 99;
+
 		// If we don't have a vocabWords, we have nothing to do.
 		if(vocabWords == nil)
 			return;
@@ -167,18 +185,30 @@ class VocabCfg: VocabProps
 		// Create the Unthing for our vocabulary, if we're doing so.
 		createUnthing();
 
-		canonicalizeOrder();
+		// Figure out how we should be ordered.
+		canonicalizeOrder(idx);
 	}
 
-	canonicalizeOrder() {
+	// Handle a couple of different initialization methods for the
+	// config order.
+	// The optional arg is the index for this config in the object's
+	// config declarations.  By default with no explicit order
+	// declaration configs are ordered by their lexial ordering
+	// in the source code.
+	canonicalizeOrder(idx?) {
+		// See if we have an order declared.
 		switch(dataTypeXlat(order)) {
 			case TypeSString:
+				// If it's a string, make it an integer.
 				order = toInteger(order);
 				break;
 			case TypeInt:
+				// If it's already an integer we're done.
 				break;
 			default:
-				order = 99;
+				// No valid declaration, use our order
+				// in the source or fall back to a default.
+				order = (idx ? idx : 99);
 				break;
 		}
 	}
@@ -329,13 +359,90 @@ class VocabCfg: VocabProps
 
 // Mixin class for objects that want to use dynamic vocabulary.
 class DynamicVocab: object
+	// Used to store the object's original name, before any
+	// tweaking by the module.  Used when there is no vocab cfg
+	// active that supplies a name.
+	_dynamicVocabName = nil
+
 	// This will hold all of our active VocabCfgs.
 	_vocabCfgs = nil
 
+	// The current vocab cfg.
 	_vocabCfgState = nil
 
 	// Flag indicating whether or not the _vocabCfgs are sorted.
 	_vocabCfgsSorted = nil
+
+	// If we haven't already saved the original name, we do so now.
+	dynamicVocabSaveName() {
+		if(_dynamicVocabName == nil)
+			_dynamicVocabName = name;
+	}
+
+	// Handle updating the equivalence grouping, which should only be
+	// necessary if a) the equivalenceKey is the object's name, and
+	// b) it changed.
+	dynamicVocabEquivalentKey() {
+		// If we're not an equivalent object or initializeEquivalent()
+		// hasn't been called yet we do nothing.
+		if(!isEquivalent || !equivalentGrouperTable)
+			return;
+
+		// If the key isn't the name we won't have changed it, so
+		// we don't have to do anything.
+		if(equivalenceKey != name)
+			return;
+
+		// If there's already a grouper in the table for this
+		// key we don't have to do anything.
+		if(equivalentGrouperTable[equivalenceKey])
+			return;
+
+		// Set up equivalence grouping using the new key using
+		// adv3's builtin mechanism.
+		initializeEquivalent();
+	}
+
+	// Tweak the object's name.  Called when we activate or deactivate
+	// a config.
+	dynamicVocabTweakName() {
+		local i, l, cfg, txt;
+
+		// See if we have any configs.
+		if((l = getVocabCfgs()) != nil) {
+			i = 1;
+
+			// We iterate through the configs until we find an
+			// active one that defines a name or we run out
+			// of configs.
+			while((txt == nil) && (i <= l.length)) {
+				cfg = l[i];
+				if(cfg.isActive())
+					txt = cfg.getName();
+				i += 1;
+			}
+		}
+
+		// If we didn't get a name above, use our original one.
+		if(txt == nil)
+			txt = _dynamicVocabName;
+
+		// If it's the same as our current name, no change: bail.
+		if(txt == name)
+			return;
+
+		// Update the name
+		dynamicVocabUpdateName(txt);
+	}
+
+	dynamicVocabUpdateName(txt) {
+		if(txt == nil)
+			return;
+		dynamicVocabSaveName();
+		name = txt;
+		if(isEquivalent)
+			dynamicVocabEquivalentKey();
+	}
 
 	// Add a VocabCfg instance to our list, if it's not already on it.
 	addVocab(cfg) {
@@ -399,18 +506,8 @@ class DynamicVocab: object
 		cfg.applyTo(self);
 		twiddleCfg(cfg, true);
 
+		dynamicVocabTweakName();
 		return(true);
-	}
-
-	// Make a VocabCfg active or inactive.
-	twiddleCfg(cfg, v) {
-		// Change the state on the instance itself.
-		cfg.setActive(v);
-
-		// Remember this state.  This is used to detect when
-		// the state changes, which means we need to update our
-		// vocabulary.
-		_setVocabCfgState(cfg, v);
 	}
 
 	// Remove a VocabCfg instance.
@@ -428,8 +525,24 @@ class DynamicVocab: object
 		// Apply the vocabulary changes.
 		cfg.removeFrom(self);
 
+		dynamicVocabTweakName();
+
 
 		return(true);
+	}
+
+	// Make a VocabCfg active or inactive.
+	// This is bookkeeping for the module.  The bit that changes
+	// how things are actually parsed happens in VocabProps.applyTo()
+	// and .removeFrom()
+	twiddleCfg(cfg, v) {
+		// Change the state on the instance itself.
+		cfg.setActive(v);
+
+		// Remember this state.  This is used to detect when
+		// the state changes, which means we need to update our
+		// vocabulary.
+		_setVocabCfgState(cfg, v);
 	}
 
 	// Go through each VocabCfg instance (that we care about) and
@@ -493,12 +606,22 @@ class DynamicVocab: object
 		return(true);
 	}
 
-	getVocabCfg() {
+	getVocabCfgs() {
 		if(_vocabCfgs == nil)
 			return(nil);
 		if(_vocabCfgsSorted != true)
 			sortVocabCfgs();
-		return(_vocabCfgs.valWhich({ x: x.isActive() == true }));
+
+		return(_vocabCfgs);
+	}
+
+	getVocabCfg() {
+		local cfg;
+
+		if((cfg = getVocabCfgs()) == nil)
+			return(nil);
+
+		return(cfg.valWhich({ x: x.isActive() == true }));
 	}
 ;
 
